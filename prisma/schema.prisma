@@ -1,0 +1,228 @@
+// NexGenLegal — Prisma Schema
+// Corverxis Technologies Ltd
+// Standards: SOC2, GDPR, CCPA, ISO 27001
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── USERS ─────────────────────────────────────────────────────────
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  emailVerified         Boolean   @default(false)
+  emailVerifiedAt       DateTime?
+  name                  String?
+  org                   String?
+  passwordHash          String?   // null for OAuth-only users
+  avatarUrl             String?
+
+  // Subscription
+  paid                  Boolean   @default(false)
+  plan                  String?   // Solo | Law Firm | Government | Enterprise
+  stripeCustomerId      String?   @unique
+  stripeSubscriptionId  String?   @unique
+  subscriptionStatus    String?   // active | past_due | canceled | trialing
+  subscriptionEndsAt    DateTime?
+
+  // MFA
+  mfaEnabled            Boolean   @default(false)
+  mfaTotpSecret         String?   // encrypted at rest
+
+  // Privacy / Compliance (SOC2 + GDPR)
+  privacyAgreed         Boolean   @default(false)
+  privacyAgreedAt       DateTime?
+  privacyAgreedVersion  String?   @default("1.0")
+  marketingOptIn        Boolean   @default(false)
+  dataRetentionConsent  Boolean   @default(true)
+  deletionRequestedAt   DateTime? // GDPR right to erasure
+
+  // Usage
+  docsUsed              Int       @default(0)
+  docsLimit             Int       @default(0) // 0 = unlimited
+
+  // Audit fields
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  lastLoginAt           DateTime?
+  lastLoginIp           String?
+  signupIp              String?
+
+  // Relations
+  oauthAccounts         OAuthAccount[]
+  sessions              Session[]
+  documents             Document[]
+  auditLogs             AuditLog[]
+  accountingConnections AccountingConnection[]
+
+  @@index([email])
+  @@index([stripeCustomerId])
+  @@map("users")
+}
+
+// ── OAUTH ACCOUNTS ─────────────────────────────────────────────────
+model OAuthAccount {
+  id                String    @id @default(cuid())
+  userId            String
+  provider          String    // google | microsoft | linkedin
+  providerAccountId String
+  accessToken       String?   // encrypted
+  refreshToken      String?   // encrypted
+  tokenExpiresAt    DateTime?
+  scope             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// ── SESSIONS ───────────────────────────────────────────────────────
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  ipAddress    String?
+  userAgent    String?
+  mfaVerified  Boolean  @default(false)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ── DOCUMENTS ─────────────────────────────────────────────────────
+model Document {
+  id           String   @id @default(cuid())
+  userId       String
+  title        String
+  docType      String   // nda | complaint | exec-order | financial-full | etc.
+  module       String   // court | contracts | government | legislative | international | financial
+  jurisdiction String?
+  matter       String?
+  content      String   @db.Text // AI-generated document content
+  wordCount    Int?
+  status       String   @default("generated") // generated | reviewed | signed | archived
+  pdfUrl       String?  // if exported to PDF and stored
+  docxUrl      String?  // if exported to DOCX and stored
+  metadata     Json?    // additional structured metadata
+
+  // Data source (for financial module)
+  dataSource   String?  // manual | quickbooks | xero | sage | upload
+  attachments  DocumentAttachment[]
+
+  // Compliance
+  encryptedAt  DateTime?
+  retainUntil  DateTime? // auto-delete schedule (GDPR/data retention)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([docType])
+  @@index([module])
+  @@map("documents")
+}
+
+// ── DOCUMENT ATTACHMENTS ──────────────────────────────────────────
+model DocumentAttachment {
+  id           String   @id @default(cuid())
+  documentId   String
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String   // S3/R2/storage path — encrypted reference
+  uploadedAt   DateTime @default(now())
+
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_attachments")
+}
+
+// ── ACCOUNTING CONNECTIONS ─────────────────────────────────────────
+model AccountingConnection {
+  id               String    @id @default(cuid())
+  userId           String
+  provider         String    // quickbooks | xero | sage | netsuite | wave | freshbooks
+  providerAccountId String?
+  accessToken      String?   // encrypted at rest
+  refreshToken     String?   // encrypted at rest
+  tokenExpiresAt   DateTime?
+  scope            String?
+  companyName      String?
+  companyId        String?
+  status           String    @default("active") // active | expired | revoked
+  lastSyncAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("accounting_connections")
+}
+
+// ── STRIPE EVENTS (idempotency log) ───────────────────────────────
+model StripeEvent {
+  id          String   @id // Stripe event ID
+  type        String
+  processed   Boolean  @default(false)
+  processedAt DateTime?
+  payload     Json
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+// ── AUDIT LOGS (SOC2 + ISO 27001) ─────────────────────────────────
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String   // SIGNUP | LOGIN | LOGOUT | DOC_GENERATED | PLAN_CHANGED | DATA_DELETED | MFA_ENABLED | etc.
+  resource    String?  // document | user | session | subscription
+  resourceId  String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  severity    String   @default("info") // info | warning | critical
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ── DATA DELETION REQUESTS (GDPR) ─────────────────────────────────
+model DeletionRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  email       String
+  status      String   @default("pending") // pending | processing | completed
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  notes       String?
+
+  @@index([userId])
+  @@map("deletion_requests")
+}
