@@ -242,7 +242,7 @@ footer a:hover{color:var(--text)}
 .auth-tabs{display:flex;gap:0;margin-bottom:24px;border:1px solid var(--b2);border-radius:8px;overflow:hidden}
 .auth-tab{flex:1;padding:9px;font-family:var(--mono);font-size:9.5px;letter-spacing:.5px;cursor:pointer;background:transparent;border:none;color:var(--muted);transition:all .15s;text-align:center}
 .auth-tab.active{background:var(--accentd);color:var(--accent)}
-.auth-form{display:flex;flex-direction:column;gap:8px}
+.auth-form{display:flex;flex-direction:column;gap:8px}.auth-form.hidden{display:none}
 .auth-form.hidden{display:none}
 .auth-inp{background:var(--panel);border:1px solid var(--b2);border-radius:7px;padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text);outline:none;width:100%;transition:border-color .15s}
 .auth-inp:focus{border-color:rgba(0,200,255,.4)}
@@ -1504,15 +1504,22 @@ function authShowTab(tab) {
   var inn  = document.getElementById('formSignIn');
   var tabU = document.getElementById('tabSignUp');
   var tabI = document.getElementById('tabSignIn');
+  if (!up || !inn) return;
   if (tab === 'up') {
-    up.classList.remove('hidden');  inn.classList.add('hidden');
-    tabU.classList.add('active');   tabI.classList.remove('active');
+    up.style.display  = 'flex';
+    inn.style.display = 'none';
+    if (tabU) { tabU.classList.add('active'); }
+    if (tabI) { tabI.classList.remove('active'); }
   } else {
-    inn.classList.remove('hidden'); up.classList.add('hidden');
-    tabI.classList.add('active');   tabU.classList.remove('active');
+    inn.style.display = 'flex';
+    up.style.display  = 'none';
+    if (tabI) { tabI.classList.add('active'); }
+    if (tabU) { tabU.classList.remove('active'); }
   }
-  document.getElementById('authMsgUp').textContent = '';
-  document.getElementById('authMsgIn').textContent = '';
+  var mu = document.getElementById('authMsgUp');
+  var mi = document.getElementById('authMsgIn');
+  if (mu) mu.textContent = '';
+  if (mi) mi.textContent = '';
 }
 
 function authMsg(id, msg, type) {
@@ -2212,7 +2219,7 @@ function autoConfirmAndLaunch() {
         <button class="auth-tab active" id="tabSignUp" onclick="authShowTab('up')">Create Account</button>
         <button class="auth-tab" id="tabSignIn" onclick="authShowTab('in')">Sign In</button>
       </div>
-      <div class="auth-form" id="formSignUp">
+      <div class="auth-form" id="formSignUp" style="display:flex;">
         <input class="auth-inp" id="suName" placeholder="Full Name" autocomplete="name"/>
         <input class="auth-inp" id="suOrg" placeholder="Organisation / Law Firm" autocomplete="organization"/>
         <input class="auth-inp" id="suEmail" type="email" placeholder="Work Email" autocomplete="email"/>
@@ -2225,7 +2232,7 @@ function autoConfirmAndLaunch() {
         <div class="auth-msg" id="authMsgUp"></div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-align:center;margin-top:6px">&#x2713; Cancel anytime &nbsp;&#x2713; Secure payment via Stripe &nbsp;&#x2713; Early Access pricing</div>
       </div>
-      <div class="auth-form hidden" id="formSignIn">
+      <div class="auth-form" id="formSignIn" style="display:none">
         <input class="auth-inp" id="siEmail" type="email" placeholder="Email" autocomplete="email"/>
         <input class="auth-inp" id="siPass" type="password" placeholder="Password" autocomplete="current-password"/>
         <button class="auth-btn" onclick="authSignIn()">Sign In &#x2192;</button>
