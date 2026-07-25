@@ -2,6 +2,8 @@
 const jwt    = require('jsonwebtoken');
 const { prisma } = require('../utils/prisma');
 
+const ADMIN_EMAILS = ['tonywell@cardioailive.com'];
+
 async function authenticate(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Authentication required.' });
@@ -18,12 +20,16 @@ async function authenticate(req, res, next) {
 }
 
 function requirePaid(req, res, next) {
+  // Admin emails bypass the paywall entirely
+  if (ADMIN_EMAILS.includes((req.user?.email || '').toLowerCase())) return next();
   if (!req.user?.paid) return res.status(403).json({ error: 'An active subscription is required.', paywall: true });
   next();
 }
 
 function requireAdmin(req, res, next) {
-  if (req.user?.email !== process.env.ADMIN_EMAIL) return res.status(403).json({ error: 'Forbidden.' });
+  if (!ADMIN_EMAILS.includes((req.user?.email || '').toLowerCase()) && req.user?.email !== process.env.ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
   next();
 }
 
