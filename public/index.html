@@ -1172,26 +1172,17 @@ function ldpExample(type,matter,jurisdiction){
 
 async function ldpGenerate(){
   if(_ldpRunning)return;
-  // ── PAYWALL GATE — no free trial, paid only ───────────────────
-  var user=null;try{user=JSON.parse(localStorage.getItem('ngl_user')||'null');}catch(e){}
-  if(!user||!user.paid){
-    showUpgradeWall();
-    return;
-  }
-  // ────────────────────────────────────────────────────────────
-  var key=_ldpKey;
-  if(!key){toast('Authentication error — please refresh','err');return;}
+
+  // ── PAYWALL GATE — verify against backend session ────────────
+  var sess=null;try{sess=JSON.parse(localStorage.getItem('ngl_session')||'{}');}catch(e){}
+  if(!sess||!sess.token){showPaywall();return;}
+
   var docType=(document.getElementById('ldpDocType')||{}).value||'nda';
   var matter=(document.getElementById('ldpMatter')||{}).value||'the parties';
   var jur=(document.getElementById('ldpJurisdiction')||{}).value||'United States — Federal';
   var ctx=(document.getElementById('ldpContext')||{}).value||'';
   var selEl=document.getElementById('ldpDocType');
   var docLabel=selEl?(selEl.options[selEl.selectedIndex]||{}).text||docType:docType;
-  var sysprompt=LDP_PROMPTS[docType]||LDP_PROMPTS['nda'];
-  var userPrompt='Generate a complete, professionally drafted '+docLabel+' for: '+matter
-    +'\nJurisdiction: '+jur
-    +(ctx?'\nAdditional context: '+ctx:'')
-    +'\n\nWrite the ENTIRE document — all sections, all clauses, complete operative language. Use Markdown headings (##, ###). Include all standard legal provisions. The document should be ready for attorney review and signature. Do not use placeholder text.';
 
   _ldpRunning=true;
   var genBtn=document.getElementById('ldpGenBtn');
@@ -1210,20 +1201,22 @@ async function ldpGenerate(){
 
   _ldpContent='';
   try{
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+    // ── CALL BACKEND — not Anthropic directly ─────────────────
+    var resp=await fetch('/api/documents/generate',{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,stream:true,system:sysprompt,messages:[{role:'user',content:userPrompt}]}),
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+sess.token},
+      body:JSON.stringify({docType:docType,matter:matter,jurisdiction:jur,context:ctx}),
     });
     if(!resp.ok){
-      var ed=await resp.json().catch(function(){return{error:{message:'HTTP '+resp.status}};});
-      var rawMsg=(ed.error&&ed.error.message)||'HTTP '+resp.status;
-      var rawMsgLower=rawMsg.toLowerCase();
-      // Intercept balance/credit/quota-type errors — never expose backend API billing details to customers
-      if(rawMsgLower.indexOf('credit')>-1||rawMsgLower.indexOf('balance')>-1||rawMsgLower.indexOf('quota')>-1||rawMsgLower.indexOf('rate limit')>-1||resp.status===429||resp.status===402){
-        throw new Error('SERVICE_BUSY');
+      var ed=await resp.json().catch(function(){return{error:'Service error'};});
+      if(resp.status===401){
+        try{localStorage.removeItem('ngl_session');}catch(e){}
+        showPaywall();
+        throw new Error('Session expired — please sign in again.');
       }
-      throw new Error(rawMsg);
+      if(resp.status===403){showPaywall();throw new Error('Subscription required.');}
+      if(resp.status===429||resp.status===503){throw new Error('SERVICE_BUSY');}
+      throw new Error(ed.error||'HTTP '+resp.status);
     }
     clearInterval(miv);
     thinkEl.style.display='none';
@@ -1232,6 +1225,8 @@ async function ldpGenerate(){
     docEl.innerHTML='<span class="ldp-cursor"></span>';
     document.getElementById('ldpOutTitle').textContent=docLabel+' — Generating…';
     document.getElementById('ldpStatusTxt').textContent='Streaming…';
+
+    // ── READ SSE STREAM FROM BACKEND ──────────────────────────
     var reader=resp.body.getReader();var dec=new TextDecoder();var buf='';
     while(true){
       var r=await reader.read();if(r.done)break;
@@ -1239,8 +1234,13 @@ async function ldpGenerate(){
       var lines=buf.split('\n');buf=lines.pop();
       for(var ln of lines){
         ln=ln.trim();if(!ln.startsWith('data:'))continue;
-        var json=ln.slice(5).trim();if(json==='[DONE]')continue;
-        try{var ev=JSON.parse(json);if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.text){_ldpContent+=ev.delta.text;docEl.innerHTML=ldpMdR(_ldpContent)+'<span class="ldp-cursor"></span>';docEl.scrollTop=docEl.scrollHeight;}}catch(e){}
+        var json=ln.slice(5).trim();if(!json)continue;
+        try{
+          var ev=JSON.parse(json);
+          if(ev.done)break;
+          if(ev.error){throw new Error('SERVICE_BUSY');}
+          if(ev.text){_ldpContent+=ev.text;docEl.innerHTML=ldpMdR(_ldpContent)+'<span class="ldp-cursor"></span>';docEl.scrollTop=docEl.scrollHeight;}
+        }catch(e){}
       }
     }
     docEl.innerHTML=ldpMdR(_ldpContent);
@@ -1248,37 +1248,22 @@ async function ldpGenerate(){
     ['ldpCopyBtn','ldpPdfBtn','ldpDocxBtn','ldpSaveBtn'].forEach(function(id){var e=document.getElementById(id);if(e)e.style.display='inline-block';});
     document.getElementById('ldpStatusTxt').textContent='NexGen Ultra · Complete ✓';
     var dot=document.getElementById('ldpDot');if(dot)dot.style.background='#00E87A';
-    // Increment free doc counter
-    var user2=null;try{user2=JSON.parse(localStorage.getItem('ngl_user')||'null');}catch(e){}
-    if(!user2||!user2.paid){
-      var used=0;try{used=parseInt(localStorage.getItem('ngl_docs_used')||'0');}catch(e){}
-      used++;
-      try{localStorage.setItem('ngl_docs_used',used);}catch(e){}
-      var remaining=1-used;
-      updateDocCounter(used);
-      if(remaining<=0){
-        toast(docLabel+' generated ✓ — You have used your free document. Upgrade to continue.','ok');
-      } else {
-        toast(docLabel+' generated ✓ — '+remaining+' free document'+(remaining===1?'':'s')+' remaining','ok');
-      }
-    } else {
-      toast(docLabel+' generated ✓','ok');
-    }
+    toast(docLabel+' generated ✓','ok');
     setTimeout(function(){document.getElementById('ldpStatusTxt').textContent='Ready';var d2=document.getElementById('ldpDot');if(d2)d2.style.background='var(--accent)';},3000);
   }catch(err){
     clearInterval(miv);
     thinkEl.style.display='none';
     document.getElementById('ldpEmpty').style.display='flex';
-    var isServiceBusy = (err.message === 'SERVICE_BUSY');
-    var friendlyMsg = isServiceBusy
-      ? 'Our document generation service is temporarily busy. Please try again in a few minutes, or contact support if this continues.'
-      : (err.message || 'Unknown error');
-    var supportLine = isServiceBusy
-      ? '<div style="font-size:11.5px;color:var(--muted);margin-top:10px">Need help now? <a href="mailto:support@corverxis.com" style="color:var(--accent)">support@corverxis.com</a></div>'
-      : '';
+    var isServiceBusy=(err.message==='SERVICE_BUSY');
+    var friendlyMsg=isServiceBusy
+      ?'Our document generation service is temporarily busy. Please try again in a few minutes, or contact support if this continues.'
+      :(err.message||'Unknown error');
+    var supportLine=isServiceBusy
+      ?'<div style="font-size:11.5px;color:var(--muted);margin-top:10px">Need help now? <a href="mailto:support@corverxis.com" style="color:var(--accent)">support@corverxis.com</a></div>'
+      :'';
     document.getElementById('ldpEmpty').innerHTML='<div style="font-size:36px;margin-bottom:14px">⚠️</div><div style="font-size:14px;font-weight:600;color:#FF6B6B;margin-bottom:8px">'+(isServiceBusy?'Service Temporarily Unavailable':'Generation failed')+'</div><div style="font-size:12.5px;color:var(--muted);max-width:320px">'+friendlyMsg+'</div>'+supportLine;
     document.getElementById('ldpStatusTxt').textContent='Error';
-    toast(isServiceBusy ? 'Service temporarily busy — please try again later' : (err.message||'Generation failed'), 'err');
+    toast(isServiceBusy?'Service temporarily busy — please try again later':(err.message||'Generation failed'),'err');
   }finally{
     _ldpRunning=false;
     if(genBtn)genBtn.disabled=false;
