@@ -1545,7 +1545,7 @@ async function authSignUp() {
     return;
   }
   authMsg('authMsgUp', 'Creating your account…', 'ok');
-  var btn3 = document.querySelector('#formSignUp .auth-btn');
+  var btn3 = document.getElementById('btnSignUp');
   if (btn3) { btn3.disabled = true; btn3.textContent = 'Creating account…'; }
   try {
     var resp = await fetch('/api/auth/signup', {
@@ -1567,7 +1567,7 @@ async function authSignUp() {
     console.error('[NexGenLegal] SignUp error:', e);
     authMsg('authMsgUp', 'Connection error: ' + e.message, 'err');
   } finally {
-    var btn4 = document.querySelector('#formSignUp .auth-btn');
+    var btn4 = document.getElementById('btnSignUp');
     if (btn4) { btn4.disabled = false; btn4.textContent = 'Create Account →'; }
   }
 }
@@ -1579,7 +1579,7 @@ async function authSignIn() {
   if (!pass)                          { authMsg('authMsgIn', 'Enter your password', 'err'); return; }
   // Show immediate visual feedback
   authMsg('authMsgIn', 'Signing in…', 'ok');
-  var btn = document.querySelector('#formSignIn .auth-btn');
+  var btn = document.getElementById('btnSignIn');
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
   try {
     var resp = await fetch('/api/auth/signin', {
@@ -1603,7 +1603,7 @@ async function authSignIn() {
     console.error('[NexGenLegal] SignIn error:', e);
     authMsg('authMsgIn', 'Connection error: ' + e.message, 'err');
   } finally {
-    var btn2 = document.querySelector('#formSignIn .auth-btn');
+    var btn2 = document.getElementById('btnSignIn');
     if (btn2) { btn2.disabled = false; btn2.textContent = 'Sign In →'; }
   }
 }
@@ -1930,6 +1930,37 @@ async function mfaVerify() {
 }
 
 
+// ── WIRE EVENT LISTENERS (CSP-safe, no inline onclick) ──────────
+document.addEventListener('DOMContentLoaded', function() {
+  // Auth tabs
+  var tabUp = document.getElementById('tabSignUp');
+  var tabIn = document.getElementById('tabSignIn');
+  if (tabUp) tabUp.addEventListener('click', function() { authShowTab('up'); });
+  if (tabIn) tabIn.addEventListener('click', function() { authShowTab('in'); });
+
+  // Auth buttons
+  var btnSignUp = document.getElementById('btnSignUp');
+  var btnSignIn = document.getElementById('btnSignIn');
+  if (btnSignUp) btnSignUp.addEventListener('click', authSignUp);
+  if (btnSignIn) btnSignIn.addEventListener('click', authSignIn);
+
+  // Privacy checkbox link
+  var privLink = document.querySelector('#suConsentRow a');
+  if (privLink) privLink.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); openPrivacyModal(); });
+
+  // MFA verify button
+  var mfaBtn = document.getElementById('mfaVerifyBtn');
+  if (mfaBtn) mfaBtn.addEventListener('click', mfaVerify);
+
+  // MFA resend button
+  var mfaResend = document.getElementById('mfaResendBtn');
+  if (mfaResend) mfaResend.addEventListener('click', mfaResend);
+
+  // Privacy modal close
+  var privClose = document.querySelector('.privacy-modal-close');
+  if (privClose) privClose.addEventListener('click', closePrivacyModal);
+});
+
 // ── PRIVACY MODAL ────────────────────────────────────────────────
 function openPrivacyModal() {
   document.getElementById('privacyModal').classList.add('open');
@@ -2216,8 +2247,8 @@ function autoConfirmAndLaunch() {
         </div>
       </div>
       <div class="auth-tabs">
-        <button class="auth-tab active" id="tabSignUp" onclick="authShowTab('up')">Create Account</button>
-        <button class="auth-tab" id="tabSignIn" onclick="authShowTab('in')">Sign In</button>
+        <button class="auth-tab active" id="tabSignUp">Create Account</button>
+        <button class="auth-tab" id="tabSignIn">Sign In</button>
       </div>
       <div class="auth-form" id="formSignUp" style="display:flex;">
         <input class="auth-inp" id="suName" placeholder="Full Name" autocomplete="name"/>
@@ -2228,14 +2259,14 @@ function autoConfirmAndLaunch() {
           <input type="checkbox" id="suPrivacyAgree"/>
           <label for="suPrivacyAgree">I have read and agree to the <a href="#" onclick="event.preventDefault();event.stopPropagation();openPrivacyModal()">Privacy Policy and Terms of Service</a>.</label>
         </div>
-        <button class="auth-btn" onclick="authSignUp()">Create Account &#x2192;</button>
+        <button class="auth-btn" id="btnSignUp">Create Account &#x2192;</button>
         <div class="auth-msg" id="authMsgUp"></div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-align:center;margin-top:6px">&#x2713; Cancel anytime &nbsp;&#x2713; Secure payment via Stripe &nbsp;&#x2713; Early Access pricing</div>
       </div>
       <div class="auth-form" id="formSignIn" style="display:none">
         <input class="auth-inp" id="siEmail" type="email" placeholder="Email" autocomplete="email"/>
         <input class="auth-inp" id="siPass" type="password" placeholder="Password" autocomplete="current-password"/>
-        <button class="auth-btn" onclick="authSignIn()">Sign In &#x2192;</button>
+        <button class="auth-btn" id="btnSignIn">Sign In &#x2192;</button>
         <div class="auth-msg" id="authMsgIn"></div>
       </div>
     </div>
