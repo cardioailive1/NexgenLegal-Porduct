@@ -1196,6 +1196,9 @@ async function ldpGenerate(){
   // ── PAYWALL GATE — verify against backend session ────────────
   var sess=null;try{sess=JSON.parse(localStorage.getItem('ngl_session')||'{}');}catch(e){}
   if(!sess||!sess.token){showPaywall();return;}
+  var user_check=null;try{user_check=JSON.parse(localStorage.getItem('ngl_user')||'null');}catch(e){}
+  var ADMIN_EMAILS=['tonywell@cardioailive.com'];
+  var isAdminUser=user_check&&ADMIN_EMAILS.indexOf((user_check.email||'').toLowerCase())>-1;
 
   var docType=(document.getElementById('ldpDocType')||{}).value||'nda';
   var matter=(document.getElementById('ldpMatter')||{}).value||'the parties';
@@ -1557,11 +1560,13 @@ async function authSignUp() {
     if (!resp.ok) { authMsg('authMsgUp', (data.errors && data.errors[0] && data.errors[0].msg) || data.error || 'Sign up failed.', 'err'); return; }
     try { localStorage.setItem('ngl_session', JSON.stringify({ token: data.token })); } catch(e) {}
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
-    authMsg('authMsgUp', 'Account created! Choose a plan to continue ✓', 'ok');
+    authMsg('authMsgUp', 'Account created! ✓', 'ok');
     setTimeout(function() {
       document.getElementById('authWall').classList.add('hidden');
       showUserBar(data.user);
-      showPaywall();
+      var ADMIN_EMAILS = ['tonywell@cardioailive.com'];
+      var isAdmin = ADMIN_EMAILS.indexOf((data.user.email || '').toLowerCase()) > -1;
+      if (isAdmin || data.paid) { openLiveDemo(); } else { showPaywall(); }
     }, 800);
   } catch(e) {
     console.error('[NexGenLegal] SignUp error:', e);
@@ -1598,7 +1603,9 @@ async function authSignIn() {
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
     document.getElementById('authWall').classList.add('hidden');
     showUserBar(data.user);
-    if (!data.paid) { showPaywall(); } else { openLiveDemo(); }
+    var ADMIN_EMAILS = ['tonywell@cardioailive.com'];
+    var isAdmin = ADMIN_EMAILS.indexOf((data.user.email || '').toLowerCase()) > -1;
+    if (isAdmin || data.paid) { openLiveDemo(); } else { showPaywall(); }
   } catch(e) {
     console.error('[NexGenLegal] SignIn error:', e);
     authMsg('authMsgIn', 'Connection error: ' + e.message, 'err');
@@ -1685,10 +1692,15 @@ async function paywallConfirmPaid() {
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
     document.getElementById('authWall').classList.add('hidden');
     showUserBar(data.user);
-    if (!data.paid) {
+    // Admin bypass — full access regardless of subscription status
+    var ADMIN_EMAILS = ['tonywell@cardioailive.com'];
+    var isAdmin = ADMIN_EMAILS.indexOf((data.user.email || '').toLowerCase()) > -1;
+    if (isAdmin || data.paid) {
+      if (paymentSuccess) {
+        setTimeout(function() { openLiveDemo(); toast('Welcome to NexGenLegal ✓ Full access unlocked', 'ok'); }, 500);
+      }
+    } else {
       showPaywall();
-    } else if (paymentSuccess) {
-      setTimeout(function() { openLiveDemo(); toast('Welcome to NexGenLegal ✓ Full access unlocked', 'ok'); }, 500);
     }
   } catch(e) {}
 })();
