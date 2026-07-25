@@ -5,7 +5,7 @@ const { body, validationResult } = require('express-validator');
 const { prisma } = require('../utils/prisma');
 const { logger } = require('../utils/logger');
 const { audit }  = require('../utils/audit');
-const { authenticate, requirePaid } = require('../middleware/auth');
+const { authenticate, requirePaid } = require('../middleware/authMiddleware');
 const { docLimiter } = require('../middleware/rateLimit');
 const { LDP_PROMPTS } = require('../config/prompts');
 

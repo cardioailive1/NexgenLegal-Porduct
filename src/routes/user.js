@@ -3,7 +3,7 @@ const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const { prisma } = require('../utils/prisma');
 const { audit }  = require('../utils/audit');
-const { authenticate } = require('../middleware/auth');
+const { authenticate } = require('../middleware/authMiddleware');
 
 // ── GET PROFILE ───────────────────────────────────────────────────
 router.get('/profile', authenticate, async (req, res) => {

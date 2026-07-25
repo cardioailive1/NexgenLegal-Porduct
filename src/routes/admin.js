@@ -1,7 +1,7 @@
 'use strict';
 const router  = require('express').Router();
 const { prisma } = require('../utils/prisma');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/authMiddleware');
 
 // All admin routes require admin role
 router.use(authenticate, requireAdmin);

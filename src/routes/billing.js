@@ -4,7 +4,7 @@ const Stripe  = require('stripe');
 const { prisma } = require('../utils/prisma');
 const { logger } = require('../utils/logger');
 const { audit }  = require('../utils/audit');
-const { authenticate } = require('../middleware/auth');
+const { authenticate } = require('../middleware/authMiddleware');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 

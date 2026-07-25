@@ -4,7 +4,7 @@ const axios   = require('axios');
 const { prisma } = require('../utils/prisma');
 const { logger } = require('../utils/logger');
 const { audit }  = require('../utils/audit');
-const { authenticate, requirePaid } = require('../middleware/auth');
+const { authenticate, requirePaid } = require('../middleware/authMiddleware');
 const { encrypt, decrypt } = require('../utils/crypto');
 
 // ── QUICKBOOKS OAUTH2 ─────────────────────────────────────────────
