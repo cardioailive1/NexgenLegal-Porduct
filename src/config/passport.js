@@ -1,7 +1,5 @@
 'use strict';
-const passport  = require('passport');
-const GoogleStrategy    = require('passport-google-oauth20').Strategy;
-const MicrosoftStrategy = require('passport-microsoft').Strategy;
+const passport = require('passport');
 const { prisma } = require('../utils/prisma');
 const { logger } = require('../utils/logger');
 
@@ -33,33 +31,47 @@ async function findOrCreateOAuthUser(profile, provider) {
   return user;
 }
 
-passport.use(new GoogleStrategy({
-  clientID:     process.env.GOOGLE_CLIENT_ID,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL:  process.env.GOOGLE_CALLBACK_URL,
-}, async (_at, _rt, profile, done) => {
-  try {
-    const user = await findOrCreateOAuthUser(profile, 'google');
-    done(null, user);
-  } catch (e) {
-    logger.error('Google OAuth error:', e);
-    done(e, null);
-  }
-}));
+// ── GOOGLE — only register if credentials are configured ──────────
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  const GoogleStrategy = require('passport-google-oauth20').Strategy;
+  passport.use(new GoogleStrategy({
+    clientID:     process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL:  process.env.GOOGLE_CALLBACK_URL,
+  }, async (_at, _rt, profile, done) => {
+    try {
+      const user = await findOrCreateOAuthUser(profile, 'google');
+      done(null, user);
+    } catch (e) {
+      logger.error('Google OAuth error:', e);
+      done(e, null);
+    }
+  }));
+  logger.info('Google OAuth2 strategy registered');
+} else {
+  logger.warn('Google OAuth2 not configured — GOOGLE_CLIENT_ID/SECRET missing. Set these env vars to enable Google sign-in.');
+}
 
-passport.use(new MicrosoftStrategy({
-  clientID:     process.env.MICROSOFT_CLIENT_ID,
-  clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
-  callbackURL:  process.env.MICROSOFT_CALLBACK_URL,
-  scope:        ['user.read'],
-}, async (_at, _rt, profile, done) => {
-  try {
-    const user = await findOrCreateOAuthUser(profile, 'microsoft');
-    done(null, user);
-  } catch (e) {
-    logger.error('Microsoft OAuth error:', e);
-    done(e, null);
-  }
-}));
+// ── MICROSOFT — only register if credentials are configured ───────
+if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
+  const MicrosoftStrategy = require('passport-microsoft').Strategy;
+  passport.use(new MicrosoftStrategy({
+    clientID:     process.env.MICROSOFT_CLIENT_ID,
+    clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+    callbackURL:  process.env.MICROSOFT_CALLBACK_URL,
+    scope:        ['user.read'],
+  }, async (_at, _rt, profile, done) => {
+    try {
+      const user = await findOrCreateOAuthUser(profile, 'microsoft');
+      done(null, user);
+    } catch (e) {
+      logger.error('Microsoft OAuth error:', e);
+      done(e, null);
+    }
+  }));
+  logger.info('Microsoft OAuth2 strategy registered');
+} else {
+  logger.warn('Microsoft OAuth2 not configured — MICROSOFT_CLIENT_ID/SECRET missing. Set these env vars to enable Microsoft sign-in.');
+}
 
 module.exports = passport;
