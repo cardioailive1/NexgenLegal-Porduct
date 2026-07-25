@@ -936,6 +936,26 @@ footer a:hover{color:var(--text)}
 <script>
 'use strict';
 var _ldpKey=''; // API key handled server-side only
+
+// ── STARTUP CONNECTIVITY CHECK ────────────────────────────────────
+window.addEventListener('load', function() {
+  // Test backend connectivity immediately on load
+  fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer test' } })
+    .then(function(r) {
+      // Any response (even 401) means backend is reachable
+      console.log('[NexGenLegal] Backend reachable ✓ status:', r.status);
+    })
+    .catch(function(e) {
+      // Network error means backend not reachable at all
+      console.error('[NexGenLegal] Backend NOT reachable:', e.message);
+      // Show a visible warning on the auth form
+      var msg = document.getElementById('authMsgIn') || document.getElementById('authMsgUp');
+      if (msg) {
+        msg.textContent = 'Cannot connect to server. Please check your deployment.';
+        msg.className = 'auth-msg err';
+      }
+    });
+});
 var _ldpContent='',_ldpRunning=false,_currentDocMod='',_ldpKeyLoaded=false;
 var _legalDocs=[];try{_legalDocs=JSON.parse(localStorage.getItem('ngl_legal_docs')||'[]');}catch(e){}
 
@@ -1518,6 +1538,8 @@ async function authSignUp() {
     return;
   }
   authMsg('authMsgUp', 'Creating your account…', 'ok');
+  var btn3 = document.querySelector('#formSignUp .auth-btn');
+  if (btn3) { btn3.disabled = true; btn3.textContent = 'Creating account…'; }
   try {
     var resp = await fetch('/api/auth/signup', {
       method: 'POST',
@@ -1535,7 +1557,11 @@ async function authSignUp() {
       showPaywall();
     }, 800);
   } catch(e) {
-    authMsg('authMsgUp', 'Network error. Please check your connection and try again.', 'err');
+    console.error('[NexGenLegal] SignUp error:', e);
+    authMsg('authMsgUp', 'Connection error: ' + e.message, 'err');
+  } finally {
+    var btn4 = document.querySelector('#formSignUp .auth-btn');
+    if (btn4) { btn4.disabled = false; btn4.textContent = 'Create Account →'; }
   }
 }
 
@@ -1544,7 +1570,10 @@ async function authSignIn() {
   var pass  = (document.getElementById('siPass')  || {}).value || '';
   if (!email || !email.includes('@')) { authMsg('authMsgIn', 'Enter a valid email', 'err'); return; }
   if (!pass)                          { authMsg('authMsgIn', 'Enter your password', 'err'); return; }
+  // Show immediate visual feedback
   authMsg('authMsgIn', 'Signing in…', 'ok');
+  var btn = document.querySelector('#formSignIn .auth-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
   try {
     var resp = await fetch('/api/auth/signin', {
       method: 'POST',
@@ -1564,7 +1593,11 @@ async function authSignIn() {
     showUserBar(data.user);
     if (!data.paid) { showPaywall(); } else { openLiveDemo(); }
   } catch(e) {
-    authMsg('authMsgIn', 'Network error. Please check your connection and try again.', 'err');
+    console.error('[NexGenLegal] SignIn error:', e);
+    authMsg('authMsgIn', 'Connection error: ' + e.message, 'err');
+  } finally {
+    var btn2 = document.querySelector('#formSignIn .auth-btn');
+    if (btn2) { btn2.disabled = false; btn2.textContent = 'Sign In →'; }
   }
 }
 
