@@ -1210,21 +1210,20 @@ async function ldpGenerate(){
 
   _ldpContent='';
   try{
-    // Get JWT token from localStorage (set on sign-in)
-    var jwtToken = '';
-    try { var sess = JSON.parse(localStorage.getItem('ngl_session')||'{}'); jwtToken = sess.token || ''; } catch(e) {}
-    if (!jwtToken) { toast('Session expired — please sign in again', 'err'); showPaywall(); return; }
-
-    var resp=await fetch('/api/documents/generate',{
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+jwtToken},
-      body:JSON.stringify({docType:docType,matter:matter,jurisdiction:jur,context:ctx}),
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,stream:true,system:sysprompt,messages:[{role:'user',content:userPrompt}]}),
     });
     if(!resp.ok){
-      var ed=await resp.json().catch(function(){return{error:'Service error'};});
-      if(resp.status===403&&ed.paywall){showPaywall();return;}
-      if(resp.status===429||resp.status===503){throw new Error('SERVICE_BUSY');}
-      throw new Error(ed.error||'HTTP '+resp.status);
+      var ed=await resp.json().catch(function(){return{error:{message:'HTTP '+resp.status}};});
+      var rawMsg=(ed.error&&ed.error.message)||'HTTP '+resp.status;
+      var rawMsgLower=rawMsg.toLowerCase();
+      // Intercept balance/credit/quota-type errors — never expose backend API billing details to customers
+      if(rawMsgLower.indexOf('credit')>-1||rawMsgLower.indexOf('balance')>-1||rawMsgLower.indexOf('quota')>-1||rawMsgLower.indexOf('rate limit')>-1||resp.status===429||resp.status===402){
+        throw new Error('SERVICE_BUSY');
+      }
+      throw new Error(rawMsg);
     }
     clearInterval(miv);
     thinkEl.style.display='none';
@@ -1241,12 +1240,7 @@ async function ldpGenerate(){
       for(var ln of lines){
         ln=ln.trim();if(!ln.startsWith('data:'))continue;
         var json=ln.slice(5).trim();if(json==='[DONE]')continue;
-        try{
-          var ev=JSON.parse(json);
-          if(ev.done)break;
-          if(ev.error){throw new Error('SERVICE_BUSY');}
-          if(ev.text){_ldpContent+=ev.text;docEl.innerHTML=ldpMdR(_ldpContent)+'<span class="ldp-cursor"></span>';docEl.scrollTop=docEl.scrollHeight;}
-        }catch(e){}
+        try{var ev=JSON.parse(json);if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.text){_ldpContent+=ev.delta.text;docEl.innerHTML=ldpMdR(_ldpContent)+'<span class="ldp-cursor"></span>';docEl.scrollTop=docEl.scrollHeight;}}catch(e){}
       }
     }
     docEl.innerHTML=ldpMdR(_ldpContent);
@@ -1546,7 +1540,7 @@ async function authSignUp() {
       body: JSON.stringify({ email: email, password: pass, name: name, org: org, privacyAgreed: 'true' }),
     });
     var data = await resp.json();
-    if (!resp.ok) { authMsg('authMsgUp', (data.errors?.[0]?.msg || data.error || 'Sign up failed.'), 'err'); return; }
+    if (!resp.ok) { authMsg('authMsgUp', (data.errors && data.errors[0] && data.errors[0].msg) || data.error || 'Sign up failed.', 'err'); return; }
     try { localStorage.setItem('ngl_session', JSON.stringify({ token: data.token })); } catch(e) {}
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
     authMsg('authMsgUp', 'Account created! Choose a plan to continue ✓', 'ok');
@@ -1556,7 +1550,7 @@ async function authSignUp() {
       showPaywall();
     }, 800);
   } catch(e) {
-    authMsg('authMsgUp', 'Network error. Please try again.', 'err');
+    authMsg('authMsgUp', 'Network error. Please check your connection and try again.', 'err');
   }
 }
 
@@ -1582,14 +1576,10 @@ async function authSignIn() {
     try { localStorage.setItem('ngl_session', JSON.stringify({ token: data.token })); } catch(e) {}
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
     document.getElementById('authWall').classList.add('hidden');
-    if (!data.paid) {
-      showUserBar(data.user);
-      showPaywall();
-    } else {
-      showUserBar(data.user);
-    }
+    showUserBar(data.user);
+    if (!data.paid) { showPaywall(); } else { openLiveDemo(); }
   } catch(e) {
-    authMsg('authMsgIn', 'Network error. Please try again.', 'err');
+    authMsg('authMsgIn', 'Network error. Please check your connection and try again.', 'err');
   }
 }
 
@@ -1621,7 +1611,6 @@ function authSignOut() {
 }
 
 async function paywallConfirmPaid() {
-  // Re-verify subscription status from backend — not from localStorage
   try {
     var sess = JSON.parse(localStorage.getItem('ngl_session') || '{}');
     if (!sess.token) { toast('Please sign in again.', 'err'); return; }
@@ -1631,7 +1620,7 @@ async function paywallConfirmPaid() {
     var data = await resp.json();
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
     if (!data.paid) {
-      toast('Payment not confirmed yet. Please wait a few seconds and try again, or contact support@corverxis.com', 'err');
+      toast('Payment not confirmed yet — please wait a few seconds and try again, or contact support@corverxis.com', 'err');
       return;
     }
     document.getElementById('paywallWall').classList.remove('open');
@@ -1645,36 +1634,35 @@ async function paywallConfirmPaid() {
 
 // ── STARTUP — verify session against backend on page load ────────────────────
 (async function() {
-  // Check for OAuth redirect token in URL hash
+  // Handle OAuth redirect token in URL hash
   var hash = window.location.hash;
   if (hash && hash.includes('token=')) {
     var params = {};
-    hash.slice(1).split('&').forEach(function(p) { var kv = p.split('='); params[kv[0]] = kv[1]; });
+    hash.slice(1).split('&').forEach(function(p) { var kv = p.split('='); params[kv[0]] = decodeURIComponent(kv[1] || ''); });
     if (params.token) {
       try { localStorage.setItem('ngl_session', JSON.stringify({ token: params.token })); } catch(e) {}
-      window.location.hash = ''; // clean URL
+      window.location.hash = '';
     }
   }
-  // Also check for payment success redirect
+  // Handle Stripe payment success redirect
   var urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('payment') === 'success') {
-    window.history.replaceState({}, '', window.location.pathname);
-    toast('Payment confirmed ✓ Verifying your subscription…', 'ok');
-  }
+  var paymentSuccess = urlParams.get('payment') === 'success';
+  if (paymentSuccess) window.history.replaceState({}, '', window.location.pathname);
   try {
     var sess = JSON.parse(localStorage.getItem('ngl_session') || '{}');
-    if (!sess.token) return; // No session — auth wall stays visible
+    if (!sess || !sess.token) return; // No session — show auth wall
     var resp = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + sess.token } });
     if (!resp.ok) {
       try { localStorage.removeItem('ngl_session'); localStorage.removeItem('ngl_user'); } catch(e) {}
-      return; // Expired/invalid token — show auth wall
+      return;
     }
     var data = await resp.json();
     try { localStorage.setItem('ngl_user', JSON.stringify(data.user)); } catch(e) {}
     document.getElementById('authWall').classList.add('hidden');
     showUserBar(data.user);
-    if (!data.paid) showPaywall();
-    else if (urlParams.get('payment') === 'success') {
+    if (!data.paid) {
+      showPaywall();
+    } else if (paymentSuccess) {
       setTimeout(function() { openLiveDemo(); toast('Welcome to NexGenLegal ✓ Full access unlocked', 'ok'); }, 500);
     }
   } catch(e) {}
